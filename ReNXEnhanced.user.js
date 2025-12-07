@@ -134,9 +134,9 @@ const DEBUG_MODE_OVERRIDE = 1;
                         return;
                     }
 
-                    if (xhr.status >= 200 && xhr.status < 300)
+                    if (xhr.status >= 200 && xhr.status < 300) {
                         resolve(xhr.responseText);
-                    else {
+                    } else {
                         console.error("ReNXEnhanced API Error:", method, path, xhr.status, xhr.responseText);
                         reject(xhr.responseText);
                     }
@@ -786,7 +786,9 @@ const DEBUG_MODE_OVERRIDE = 1;
                         resetHiddenBtn.onclick = function() {
                             ReNXsettings.hiddenDomains = [];
                             saveSettings();
-                            document.querySelectorAll('.nxe-log-row').forEach(row => row.style.display = '');
+                            document.querySelectorAll('.nxe-log-row').forEach(row => {
+                                row.style.display = '';
+                            });
                             updateLogCountersDisplay(logsContainer);
                         };
                         if(logsContainer.parentElement) logsContainer.parentElement.insertBefore(resetHiddenBtn, logsContainer);
@@ -1222,9 +1224,9 @@ Do you want to proceed?`)) return;
                         const configName = this.parentElement.previousSibling.querySelector("input").value;
                         let numPagesExported = 0;
                         createSpinner(this);
-                        for (let i = 0; i < pages.length; i++) {
-                            makeApiRequest("GET", pages[i]).then(function(response) {
-                                config[pages[i]] = JSON.parse(response).data;
+                        pages.forEach(function(page) {
+                            makeApiRequest("GET", page).then(function(response) {
+                                config[page] = JSON.parse(response).data;
                                 numPagesExported++;
                                 if (numPagesExported == pages.length) {
                                     config.privacy.blocklists = config.privacy.blocklists.map(b => ({ id: b.id }));
@@ -1235,7 +1237,7 @@ Do you want to proceed?`)) return;
                                     exportConfigButton.lastChild.remove();
                                 }
                             });
-                        }
+                        });
                     };
                     const importConfigButton = document.createElement("button");
                     importConfigButton.className = "btn btn-primary";
