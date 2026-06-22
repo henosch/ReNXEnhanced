@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ReNXEnhanced
 // @namespace    https://github.com/henosch/ReNXEnhanced
-// @version      2.10.1
+// @version      2.11.0
 // @description  A lightweight Tampermonkey script for importing and exporting NextDNS configuration profiles, with advanced filtering and management features.
 // @author       henosch (based on OrigamiOfficial & hjk789/NXEnhanced)
 // @match        https://my.nextdns.io/*
@@ -71,7 +71,12 @@ const DEBUG_MODE_OVERRIDE = 1;
         /* Absolute time + entry counter (v2.10.0) */
         .nxe-abs-time { display:block; font-size:0.75em; color:#888; font-family:monospace; margin-top:1px; }
         .nxe-entry-counter { font-size:0.8em; color:#555; padding:5px 12px; background:#f0f4f8; border:1px solid #d0d7de; border-radius:4px; margin-bottom:6px; font-family:monospace; }
-        .nxe-search-hint { font-size:0.7em; color:#aaa; margin-top:3px; padding-left:4px; pointer-events:none; }
+        .nxe-search-hint { font-size:0.7em; color:#aaa; margin-top:2px; padding-left:4px; pointer-events:none; }
+        .nxe-multi-wrap { position:relative; width:100%; }
+        .nxe-multi-input { width:100%; border:1px solid #d0d7de; border-radius:16px; padding:5px 28px 5px 30px; font-size:0.875em; outline:none; box-sizing:border-box; background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center; }
+        .nxe-multi-input:focus { border-color:#0969da; box-shadow:0 0 0 3px rgba(9,105,218,0.3); }
+        .nxe-multi-clear { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#aaa; font-size:14px; padding:0 2px; display:none; line-height:1; }
+        .nxe-multi-clear:hover { color:#555; }
     `;
     document.head.appendChild(style);
 
@@ -792,36 +797,74 @@ const DEBUG_MODE_OVERRIDE = 1;
     }
 
     function nxeAddAbsoluteTime() {
-        document.querySelectorAll('.nxe-log-row[data-nxe-timestamp]').forEach(nxeAddAbsoluteTimeToRow);
-    }
+        document.querySelectorAll('.nxe-log-row[data-nxe-timestamp]').forEach(nxeAddAbsoluteTimeToRow);function nxeInitMultiSearch() {
+        // Use a separate input to allow spaces (React controlled input strips spaces)
+        const nativeInput = document.querySelector('input[type="search"]');
+        if (!nativeInput || document.querySelector('.nxe-multi-input')) return;
 
-    function nxeGetOrCreateCounter() {
-        let c = document.querySelector('.nxe-entry-counter');
-        if (!c) {
-            c = document.createElement('div');
-            c.className = 'nxe-entry-counter';
-            const btn = document.getElementById('resetHiddenBtn');
-            if (btn) btn.insertAdjacentElement('afterend', c);
-        }
-        return c;
-    }
+        // Hide the native search input (keep it for React state, just hide visually)
+        const nativeForm = nativeInput.closest('form');
+        if (!nativeForm) return;
 
-    function nxeUpdateEntryCounter() {
-        const c = nxeGetOrCreateCounter();
-        if (!c) return;
-        const rows = document.querySelectorAll('.nxe-log-row');
-        const total = rows.length;
-        const hidden = Array.from(rows).filter(r =>
-            r.dataset.nxeHidden === 'true' || r.style.display === 'none').length;
-        c.textContent = '\uD83D\uDCCA ' + total + ' geladen\u2002|\u2002' + (total - hidden) + ' sichtbar\u2002|\u2002' + hidden + ' versteckt';
-    }
+        // Create our own multi-search input wrapper
+        const wrap = document.createElement('div');
+        wrap.className = 'nxe-multi-wrap';
 
-    function nxeInitMultiSearch() {
-        const searchInput = document.querySelector('input[type="search"]');
-        if (!searchInput || searchInput.dataset.nxeMulti) return;
-        searchInput.dataset.nxeMulti = '1';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'nxe-multi-input';
+        input.placeholder = 'Suchen… (Leerzeichen = AND, -Begriff = Ausschluss)';
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+
+        const clearBtn = document.createElement('button');
+        clearBtn.className = 'nxe-multi-clear';
+        clearBtn.type = 'button';
+        clearBtn.textContent = '✕';
+        clearBtn.title = 'Suche zurücksetzen';
+
+        wrap.appendChild(input);
+        wrap.appendChild(clearBtn);
+
+        // Insert our wrapper before the form, hide the form
+        nativeForm.parentElement.insertBefore(wrap, nativeForm);
+        nativeForm.style.display = 'none';
+
+        // Hint below the input
         const hint = document.createElement('div');
         hint.className = 'nxe-search-hint';
+        hint.textContent = 'Tipp: Mehrere Begriffe mit Leerzeichen, Ausschluss mit -Begriff (z.B. google -googleapis)';
+        wrap.insertAdjacentElement('afterend', hint);
+
+        // Handle input
+        input.addEventListener('input', () => {
+            const q = input.value.trim();
+            clearBtn.style.display = q ? 'block' : 'none';
+            if (!q) {
+                document.querySelectorAll('.nxe-log-row[data-nxe-search-hidden]').forEach(r => {
+                    r.style.display = '';
+                    delete r.dataset.nxeSearchHidden;
+                });
+                nxeMultiSearchActive = false;
+                nxeUpdateEntryCounter();
+                return;
+            }
+            nxeMultiSearchActive = true;
+            nxeApplyMultiSearch(q);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            input.value = '';
+            clearBtn.style.display = 'none';
+            document.querySelectorAll('.nxe-log-row[data-nxe-search-hidden]').forEach(r => {
+                r.style.display = '';
+                delete r.dataset.nxeSearchHidden;
+            });
+            nxeMultiSearchActive = false;
+            nxeUpdateEntryCounter();
+            input.focus();
+        });
+    }        hint.className = 'nxe-search-hint';
         hint.textContent = 'Tipp: Mehrere Begriffe mit Leerzeichen, Ausschluss mit -Begriff (z.B. google -googleapis)';
         const wrapper = searchInput.closest('.flex-grow-1') || searchInput.parentElement;
         if (wrapper) wrapper.insertAdjacentElement('afterend', hint);
