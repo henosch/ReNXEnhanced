@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ReNXEnhanced
 // @namespace    https://github.com/henosch/ReNXEnhanced
-// @version      2.9.3
+// @version      2.10.0
 // @description  A lightweight Tampermonkey script for importing and exporting NextDNS configuration profiles, with advanced filtering and management features.
 // @author       henosch (based on OrigamiOfficial & hjk789/NXEnhanced)
 // @match        https://my.nextdns.io/*
@@ -68,6 +68,10 @@ const DEBUG_MODE_OVERRIDE = 1;
             display: inline-block !important; 
             z-index: 9999;
         }
+        /* Absolute time + entry counter (v2.10.0) */
+        .nxe-abs-time { display:block; font-size:0.75em; color:#888; font-family:monospace; margin-top:1px; }
+        .nxe-entry-counter { font-size:0.8em; color:#555; padding:5px 12px; background:#f0f4f8; border:1px solid #d0d7de; border-radius:4px; margin-bottom:6px; font-family:monospace; }
+        .nxe-search-hint { font-size:0.7em; color:#aaa; margin-top:3px; padding-left:4px; pointer-events:none; }
     `;
     document.head.appendChild(style);
 
@@ -441,6 +445,7 @@ const DEBUG_MODE_OVERRIDE = 1;
             }
 
             injectInlineLogButtons(row);
+            nxeAddAbsoluteTimeToRow(row);
 
             if (ReNXsettings.hiddenDomains.includes(domainName)) {
                 row.style.display = 'none';
@@ -729,6 +734,127 @@ const DEBUG_MODE_OVERRIDE = 1;
     let logMenuObserver = null;
     let logMenuScanInterval = null;
 
+
+    // ================================================================
+    // NEW FEATURES v2.10.0 – Absolute Time, Entry Counter, Multi-Search
+    // ================================================================
+
+    const nxeLogTimestamps = [];
+    let nxeMultiSearchActive = false;
+
+    function nxePatchFetch() {
+        if (window._nxeFetchPatched) return;
+        window._nxeFetchPatched = true;
+        const _orig = window.fetch;
+        window.fetch = async function (...args) {
+            const resp = await _orig.apply(this, args);
+            try {
+                const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+                if (url.includes('nextdns.io') && url.includes('/logs')) {
+                    resp.clone().json().then(data => {
+                        if (data && Array.isArray(data.data)) {
+                            nxeLogTimestamps.length = 0;
+                            data.data.forEach(e => nxeLogTimestamps.push(e.timestamp || null));
+                            log('[NXE] Timestamps captured: ' + nxeLogTimestamps.length);
+                            setTimeout(() => { nxeTagAllRows(); nxeUpdateEntryCounter(); }, 400);
+                        }
+                    }).catch(() => {});
+                }
+            } catch (_) {}
+            return resp;
+        };
+    }
+
+    function nxeTagAllRows() {
+        const rows = document.querySelectorAll('.nxe-log-row');
+        rows.forEach((row, i) => {
+            if (nxeLogTimestamps[i] && !row.dataset.nxeTimestamp) {
+                row.dataset.nxeTimestamp = nxeLogTimestamps[i];
+            }
+        });
+        nxeAddAbsoluteTime();
+    }
+
+    function nxeAddAbsoluteTimeToRow(row) {
+        if (!row || row.querySelector('.nxe-abs-time')) return;
+        const ts = row.dataset.nxeTimestamp;
+        if (!ts) return;
+        const timeDiv = Array.from(row.querySelectorAll('.text-end'))
+            .find(el => el.children.length === 0 &&
+                /vor|ago|Minut|Stund|Sekund|second|minute|hour|Gestern|Yesterday|Jan|Feb|M\u00e4r|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez/.test(el.textContent));
+        if (!timeDiv) return;
+        const pad = n => n.toString().padStart(2, '0');
+        const d = new Date(ts);
+        const span = document.createElement('span');
+        span.className = 'nxe-abs-time';
+        span.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        timeDiv.appendChild(span);
+    }
+
+    function nxeAddAbsoluteTime() {
+        document.querySelectorAll('.nxe-log-row[data-nxe-timestamp]').forEach(nxeAddAbsoluteTimeToRow);
+    }
+
+    function nxeGetOrCreateCounter() {
+        let c = document.querySelector('.nxe-entry-counter');
+        if (!c) {
+            c = document.createElement('div');
+            c.className = 'nxe-entry-counter';
+            const btn = document.getElementById('resetHiddenBtn');
+            if (btn) btn.insertAdjacentElement('afterend', c);
+        }
+        return c;
+    }
+
+    function nxeUpdateEntryCounter() {
+        const c = nxeGetOrCreateCounter();
+        if (!c) return;
+        const rows = document.querySelectorAll('.nxe-log-row');
+        const total = rows.length;
+        const hidden = Array.from(rows).filter(r =>
+            r.dataset.nxeHidden === 'true' || r.style.display === 'none').length;
+        c.textContent = '\uD83D\uDCCA ' + total + ' geladen\u2002|\u2002' + (total - hidden) + ' sichtbar\u2002|\u2002' + hidden + ' versteckt';
+    }
+
+    function nxeInitMultiSearch() {
+        const searchInput = document.querySelector('input[type="search"]');
+        if (!searchInput || searchInput.dataset.nxeMulti) return;
+        searchInput.dataset.nxeMulti = '1';
+        const hint = document.createElement('div');
+        hint.className = 'nxe-search-hint';
+        hint.textContent = 'Tipp: Mehrere Begriffe mit Leerzeichen, Ausschluss mit -Begriff (z.B. google -googleapis)';
+        const wrapper = searchInput.closest('.flex-grow-1') || searchInput.parentElement;
+        if (wrapper) wrapper.insertAdjacentElement('afterend', hint);
+        searchInput.addEventListener('input', () => {
+            const q = searchInput.value.trim();
+            if (!q || (!q.includes(' ') && !q.startsWith('-'))) {
+                document.querySelectorAll('.nxe-log-row[data-nxe-search-hidden]').forEach(r => {
+                    r.style.display = '';
+                    delete r.dataset.nxeSearchHidden;
+                });
+                nxeMultiSearchActive = false;
+                nxeUpdateEntryCounter();
+                return;
+            }
+            nxeMultiSearchActive = true;
+            nxeApplyMultiSearch(q);
+        });
+    }
+
+    function nxeApplyMultiSearch(query) {
+        const terms = query.trim().split(/\s+/);
+        const must = terms.filter(t => !t.startsWith('-') && t.length > 0).map(t => t.replace(/^\+/, '').toLowerCase());
+        const excl = terms.filter(t => t.startsWith('-') && t.length > 1).map(t => t.slice(1).toLowerCase());
+        document.querySelectorAll('.nxe-log-row').forEach(row => {
+            if (row.dataset.nxeHidden === 'true') return;
+            const txt = row.textContent.toLowerCase();
+            const ok = must.every(t => txt.includes(t)) && !excl.some(t => txt.includes(t));
+            if (ok) { row.style.display = ''; delete row.dataset.nxeSearchHidden; }
+            else { row.style.display = 'none'; row.dataset.nxeSearchHidden = 'true'; }
+        });
+        nxeUpdateEntryCounter();
+    }
+
     function main() {
         if (activeInterval) { clearInterval(activeInterval); activeInterval = null; }
         if (listObserver) { listObserver.disconnect(); listObserver = null; }
@@ -752,9 +878,12 @@ const DEBUG_MODE_OVERRIDE = 1;
                     log("Logs container found.");
                     initGlobalLogMenuObserver();
                     startLogMenuScan();
+                    nxePatchFetch();
+                    nxeInitMultiSearch();
                     
                     processLogRowsFromNode(logsContainer, logsContainer);
                     updateLogCountersDisplay(logsContainer);
+                    setTimeout(() => { nxeTagAllRows(); nxeUpdateEntryCounter(); nxeInitMultiSearch(); }, 800);
 
                     const logEntryObserver = new MutationObserver(function(mutations) {
                         if (!isPage(REGEX_LOGS)) { logEntryObserver.disconnect(); return; }
@@ -767,6 +896,8 @@ const DEBUG_MODE_OVERRIDE = 1;
                             });
                         });
                         updateLogCountersDisplay(logsContainer);
+                        nxeAddAbsoluteTime();
+                        nxeUpdateEntryCounter();
                     });
                     logEntryObserver.observe(logsContainer, { childList: true, subtree: true });
 
@@ -775,6 +906,8 @@ const DEBUG_MODE_OVERRIDE = 1;
                         if (!isPage(REGEX_LOGS)) { clearInterval(scanInterval); return; }
                         processLogRowsFromNode(logsContainer, logsContainer);
                         updateLogCountersDisplay(logsContainer);
+                        nxeAddAbsoluteTime();
+                        nxeUpdateEntryCounter();
                     }, 1000);
                     
                     if (!document.getElementById("resetHiddenBtn")) {
