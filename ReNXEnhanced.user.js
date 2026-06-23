@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ReNXEnhanced
 // @namespace    https://github.com/henosch/ReNXEnhanced
-// @version      2.12.0
+// @version      2.12.1
 // @description  A lightweight Tampermonkey script for importing and exporting NextDNS configuration profiles, with advanced filtering and management features.
 // @author       henosch (based on OrigamiOfficial & hjk789/NXEnhanced)
 // @match        https://my.nextdns.io/*
@@ -801,6 +801,34 @@ const DEBUG_MODE_OVERRIDE = 1;
 
     function nxeAddAbsoluteTime() {
         document.querySelectorAll('.nxe-log-row[data-nxe-timestamp]').forEach(nxeAddAbsoluteTimeToRow);let nxeBlockedOnlyActive = false;
+    }
+
+    function nxeGetOrCreateCounter() {
+        let c = document.querySelector('.nxe-entry-counter');
+        if (!c) {
+            c = document.createElement('div');
+            c.className = 'nxe-entry-counter';
+            const btn = document.getElementById('resetHiddenBtn');
+            if (btn) btn.insertAdjacentElement('afterend', c);
+            else {
+                const container = document.getElementById('nxe-log-main-container');
+                if (container) container.insertBefore(c, container.firstChild);
+            }
+        }
+        return c;
+    }
+
+    function nxeUpdateEntryCounter() {
+        const c = nxeGetOrCreateCounter();
+        if (!c) return;
+        const rows = document.querySelectorAll('.nxe-log-row');
+        const total = rows.length;
+        const hidden = Array.from(rows).filter(r =>
+            r.dataset.nxeHidden === 'true' || r.style.display === 'none').length;
+        const blockedTotal = Array.from(rows).filter(nxeIsBlocked).length;
+        c.textContent = '\uD83D\uDCCA ' + total + ' geladen\u2002|\u2002' + (total - hidden) + ' sichtbar\u2002|\u2002' + hidden + ' versteckt\u2002|\u2002\uD83D\uDEAB ' + blockedTotal + ' blockiert';
+    }
+
 
     function nxeIsBlocked(row) {
         const style = row.getAttribute('style') || '';
