@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ReNXEnhanced
 // @namespace    https://github.com/henosch/ReNXEnhanced
-// @version      2.13.2
+// @version      2.13.3
 // @description  A lightweight Tampermonkey script for importing and exporting NextDNS configuration profiles, with advanced filtering and management features.
 // @author       henosch (based on OrigamiOfficial & hjk789/NXEnhanced)
 // @match        https://my.nextdns.io/*
@@ -647,7 +647,7 @@ const DEBUG_MODE_OVERRIDE = 0;
                 const t = item.textContent.trim().split('\n')[0].trim();
                 if (t && !t.includes('\u25b8')) domain = t;
             }
-            if (domain && domain.length > 2) rows.push(domain);
+            if (domain && domain.length > 2) rows.push(domain.replace(/^\*\./, ''));
         });
         if (rows.length === 0) { alert('Keine Eintr\u00e4ge gefunden.'); return; }
         const csvContent = rows.join('\n');
