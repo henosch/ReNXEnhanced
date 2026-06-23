@@ -964,24 +964,6 @@ const DEBUG_MODE_OVERRIDE = 1;
             nxeUpdateEntryCounter();
             input.focus();
         });
-    }        hint.className = 'nxe-search-hint';
-        hint.textContent = 'Tipp: Mehrere Begriffe mit Leerzeichen, Ausschluss mit -Begriff (z.B. google -googleapis)';
-        const wrapper = searchInput.closest('.flex-grow-1') || searchInput.parentElement;
-        if (wrapper) wrapper.insertAdjacentElement('afterend', hint);
-        searchInput.addEventListener('input', () => {
-            const q = searchInput.value.trim();
-            if (!q) {
-                document.querySelectorAll('.nxe-log-row[data-nxe-search-hidden]').forEach(r => {
-                    r.style.display = '';
-                    delete r.dataset.nxeSearchHidden;
-                });
-                nxeMultiSearchActive = false;
-                nxeUpdateEntryCounter();
-                return;
-            }
-            nxeMultiSearchActive = true;
-            nxeApplyMultiSearch(q);
-        });
     }
 
     function nxeApplyMultiSearch(query) {
