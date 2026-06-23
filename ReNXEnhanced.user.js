@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ReNXEnhanced
 // @namespace    https://github.com/henosch/ReNXEnhanced
-// @version      2.13.3
+// @version      2.13.4
 // @description  A lightweight Tampermonkey script for importing and exporting NextDNS configuration profiles, with advanced filtering and management features.
 // @author       henosch (based on OrigamiOfficial & hjk789/NXEnhanced)
 // @match        https://my.nextdns.io/*
@@ -952,6 +952,18 @@ const DEBUG_MODE_OVERRIDE = 0;
 
         log("Main function started. Current URL:", location.href);
         isLargeListCache = null; 
+
+        // Cleanup stale NXE elements from previous React-Router page
+        const oldToolbar = document.getElementById("nxe-toolbar");
+        if (oldToolbar) oldToolbar.remove();
+        const oldLogContainer = document.getElementById("nxe-log-main-container");
+        if (oldLogContainer) oldLogContainer.removeAttribute("id");
+        const oldCounter = document.querySelector('.nxe-entry-counter');
+        if (oldCounter) oldCounter.remove();
+        const oldResetBtn = document.getElementById("resetHiddenBtn");
+        if (oldResetBtn) oldResetBtn.remove();
+        document.querySelectorAll('.nxe-multi-wrap').forEach(el => el.remove());
+        document.querySelectorAll('.nxe-search-hint').forEach(el => el.remove());
 
         // --- LOGS PAGE ---
         if (isPage(REGEX_LOGS)) {
