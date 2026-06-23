@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ReNXEnhanced
 // @namespace    https://github.com/henosch/ReNXEnhanced
-// @version      2.11.0
+// @version      2.12.0
 // @description  A lightweight Tampermonkey script for importing and exporting NextDNS configuration profiles, with advanced filtering and management features.
 // @author       henosch (based on OrigamiOfficial & hjk789/NXEnhanced)
 // @match        https://my.nextdns.io/*
@@ -77,6 +77,9 @@ const DEBUG_MODE_OVERRIDE = 1;
         .nxe-multi-input:focus { border-color:#0969da; box-shadow:0 0 0 3px rgba(9,105,218,0.3); }
         .nxe-multi-clear { position:absolute; right:8px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#aaa; font-size:14px; padding:0 2px; display:none; line-height:1; }
         .nxe-multi-clear:hover { color:#555; }
+        .nxe-blocked-btn { padding:4px 10px; border:1px solid #d0d7de; border-radius:12px; background:#fff; cursor:pointer; font-size:0.78em; white-space:nowrap; transition:all 0.2s; }
+        .nxe-blocked-btn.active { background:#dc3545; border-color:#dc3545; color:#fff; }
+        .nxe-blocked-btn:hover:not(.active) { border-color:#dc3545; color:#dc3545; }
     `;
     document.head.appendChild(style);
 
@@ -797,7 +800,28 @@ const DEBUG_MODE_OVERRIDE = 1;
     }
 
     function nxeAddAbsoluteTime() {
-        document.querySelectorAll('.nxe-log-row[data-nxe-timestamp]').forEach(nxeAddAbsoluteTimeToRow);function nxeInitMultiSearch() {
+        document.querySelectorAll('.nxe-log-row[data-nxe-timestamp]').forEach(nxeAddAbsoluteTimeToRow);let nxeBlockedOnlyActive = false;
+
+    function nxeIsBlocked(row) {
+        const style = row.getAttribute('style') || '';
+        return style.includes('255, 65, 54') || style.includes('border-left: 4');
+    }
+
+    function nxeApplyBlockedFilter() {
+        document.querySelectorAll('.nxe-log-row').forEach(row => {
+            if (row.dataset.nxeHidden === 'true') return;
+            if (nxeBlockedOnlyActive && !nxeIsBlocked(row)) {
+                row.style.display = 'none';
+                row.dataset.nxeBlockedHidden = 'true';
+            } else if (row.dataset.nxeBlockedHidden === 'true') {
+                row.style.display = '';
+                delete row.dataset.nxeBlockedHidden;
+            }
+        });
+        nxeUpdateEntryCounter();
+    }
+
+    function nxeInitMultiSearch() {
         // Use a separate input to allow spaces (React controlled input strips spaces)
         const nativeInput = document.querySelector('input[type="search"]');
         if (!nativeInput || document.querySelector('.nxe-multi-input')) return;
@@ -835,6 +859,19 @@ const DEBUG_MODE_OVERRIDE = 1;
         hint.className = 'nxe-search-hint';
         hint.textContent = 'Tipp: Mehrere Begriffe mit Leerzeichen, Ausschluss mit -Begriff (z.B. google -googleapis)';
         wrap.insertAdjacentElement('afterend', hint);
+        // Add "Nur blockierte" toggle button
+        const blockedBtn = document.createElement('button');
+        blockedBtn.type = 'button';
+        blockedBtn.className = 'nxe-blocked-btn';
+        blockedBtn.title = 'Nur blockierte Anfragen anzeigen';
+        blockedBtn.textContent = '\uD83D\uDEAB Nur blockierte';
+        hint.insertAdjacentElement('afterend', blockedBtn);
+
+        blockedBtn.addEventListener('click', () => {
+            nxeBlockedOnlyActive = !nxeBlockedOnlyActive;
+            blockedBtn.classList.toggle('active', nxeBlockedOnlyActive);
+            nxeApplyBlockedFilter();
+        });
 
         // Handle input
         input.addEventListener('input', () => {
