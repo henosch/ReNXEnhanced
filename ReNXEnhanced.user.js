@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ReNXEnhanced
 // @namespace    https://github.com/henosch/ReNXEnhanced
-// @version      2.12.1
+// @version      2.13.0
 // @description  A lightweight Tampermonkey script for importing and exporting NextDNS configuration profiles, with advanced filtering and management features.
 // @author       henosch (based on OrigamiOfficial & hjk789/NXEnhanced)
 // @match        https://my.nextdns.io/*
@@ -615,6 +615,16 @@ const DEBUG_MODE_OVERRIDE = 1;
     }
 
     function exportToFile(obj, fileName) {
+        if (obj && obj._raw !== undefined) {
+            const a = document.createElement('a');
+            const data = 'data:text/plain;charset=utf-8,' + encodeURIComponent(obj._raw);
+            a.setAttribute('href', data);
+            a.setAttribute('download', fileName);
+            safeAppend(document.body, a);
+            a.click();
+            a.remove();
+            return;
+        }
         const data = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(obj, null, 2));
         const a = document.createElement("a");
         a.setAttribute("href", data);
@@ -623,6 +633,31 @@ const DEBUG_MODE_OVERRIDE = 1;
         a.click();
         a.remove(); 
     }
+
+    function exportListToCSV(listName) {
+        const items = document.querySelectorAll('.list-group-item');
+        const rows = [];
+        items.forEach(item => {
+            if (item.classList.contains('text-muted')) return;
+            // Get domain text (first text node or bold element)
+            const bold = item.querySelector('b, strong');
+            let domain = bold ? bold.textContent.trim() : '';
+            if (!domain) {
+                const spans = item.querySelectorAll('span:not(.nxe-select-checkbox)');
+                spans.forEach(s => { if (!domain && s.textContent.trim()) domain = s.textContent.trim(); });
+            }
+            if (!domain) {
+                const t = item.textContent.trim().split('\n')[0].trim();
+                if (t && !t.includes('\u25b8')) domain = t;
+            }
+            if (domain && domain.length > 2) rows.push(domain);
+        });
+        if (rows.length === 0) { alert('Keine Eintr\u00e4ge gefunden.'); return; }
+        const csvContent = rows.join('\n');
+        const fileName = listName + '_' + new Date().toISOString().slice(0,10) + '.txt';
+        exportToFile({ _raw: csvContent }, fileName);
+    }
+
 
     function createSpinner(btn) {
         const spinner = document.createElement("span");
@@ -1281,6 +1316,13 @@ Are you absolutely sure?`)) return;
                             }
                         };
                         safeAppend(toolbar, clearListBtn);
+
+                        const exportBtn = document.createElement('button');
+                        exportBtn.textContent = '\uD83D\uDCE4 Exportieren';
+                        exportBtn.title = 'Liste als Textdatei exportieren (eine Domain pro Zeile)';
+                        exportBtn.className = 'btn btn-sm btn-outline-secondary';
+                        exportBtn.onclick = function() { exportListToCSV(listName || 'liste'); };
+                        safeAppend(toolbar, exportBtn);
 
                         const bulkAddBtn = document.createElement("button");
                         bulkAddBtn.className = "btn btn-sm btn-secondary";
